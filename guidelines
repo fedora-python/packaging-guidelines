@@ -2,7 +2,7 @@
 
 In Fedora we have multiple python runtimes, one for each supported major release.  At this point that's one for python2.x and one for python3.x
 
-Each runtime corresponds to a binary of the form <code>/usr/bin/python$MAJOR.$MINOR</code>  One of these python runtimes is the "system runtime" which is what is run when invoking <code>/usr/bin/python</code>.  On Fedora 21 this is a link to <code>/usr/bin/python2</code> (which itself is a link to <code>/usr/bin/python2.7</code>).
+Each runtime corresponds to a binary of the form <code>/usr/bin/python$MAJOR.$MINOR</code>  One of these python runtimes is the "system runtime" which is what is run when invoking <code>/usr/bin/python</code>.  On Fedora 23 this is a link to <code>/usr/bin/python3</code> (which itself is a link to <code>/usr/bin/python3.4</code>).
 
 However, packages in Fedora should not depend on where <code>/usr/bin/python</code> happens to point but instead should call the proper executable for the needed python major version directly, either <code>/usr/bin/python2</code> or <code>/usr/bin/python3</code> as appropriate.
 
@@ -70,12 +70,14 @@ In Fedora, the following macros are defined for you:
 |-
 |python3_version_nodots|| 3X ||Defined in python3-devel since Fedora 21 / Python 3.4.  Useful when listing files explicitly in %files section , such as %{python3_sitelib}/foo/*.cpython-%{python3_version_nodots}.pyo
 |-
+|py_default_major|| 3 ||Defined in rpm macros since Fedora 23. Useful when using same specfile across different Fedora and EPEL releases
+|-
 |}
 
 {{admon/note|The generic %{_python} macros|
-The unversioned macros, <code>%{__python}</code>, <code>%{python_sitelib}</code>, and <code>%{python_sitearch}</code> are generic macros that will always point to the default implementation.  You may only use them with applications that need to choose to use the system's default version of python.  (Currently this is the python2 interpreter.)
-This is future proofing for the time when things will be switched over to python3 by default instead of python2.
-You should use <code>%{__python2}</code>, <code>%{python2_sitelib}</code>, and <code>%{python2_sitearch}</code> to explicitly reference the python2 interpreter instead.
+The unversioned macros, <code>%{__python}</code>, <code>%{python_sitelib}</code>, and <code>%{python_sitearch}</code> are generic macros that will always point to the default implementation.  You may only use them with applications that need to choose to use the system's default version of python.  (Currently this is the python3 interpreter.)
+This is future proofing for the time when default python will be switched over to a newer major version.
+You should use <code>%{__python3}</code>, <code>%{python3_sitelib}</code>, and <code>%{python3_sitearch}</code> to explicitly reference the python3 interpreter instead.
 }}
 
 During <code>%install</code> or when listing <code>%files</code> you can use the <code>python2_sitearch</code> and <code>python2_sitelib</code> macros to specify where the installed modules are to be found.  For instance:
@@ -150,13 +152,13 @@ The <code>brp-python-bytecompile</code> script tries to figure this out for you.
 <ol>
 <li>what directory is the module installed in?  If it's <code>/usr/lib{,64}/pythonX.Y</code>, then <code>pythonX.Y</code> is used to byte compile the module.  If <code>pythonX.Y</code> is not installed, then an error is returned and the rpm build process will exit on an error so remember to <code>BuildRequire</code> the proper python package.</li>
 
-<li>the script interpreter defined in <code>%{__python}</code> is used to compile the modules.  This defaults to the latest python2 version on Fedora.  If you need to compile this module for python3, set it to <code>/usr/bin/python3</code> instead:
+<li>the script interpreter defined in <code>%{__python}</code> is used to compile the modules.  This defaults to the latest python3 version on Fedora.  If you need to compile this module for python2, set it to <code>/usr/bin/python2</code> instead:
 
 <pre>
-%global __python %{__python3}
+%global __python %{__python2}
 </pre>
 
-Doing this is useful when you have a python3 application that's installing a private module into its own directory.  For instance, if the foobar application installs a module for use only by the command line application in <code>%{_datadir}/foobar</code>.  Since these files are not in one of the python3 library paths (ie. <code>/usr/lib/python3.1</code>) you have to override <code>%{__python}</code> to tell <code>brp-python-bytecompile</code> to use the python3 interpreter for byte compiling.
+Doing this is useful when you have a python2 application that's installing a private module into its own directory.  For instance, if the foobar application installs a module for use only by the command line application in <code>%{_datadir}/foobar</code>.  Since these files are not in one of the python3 library paths (ie. <code>/usr/lib/python2.7</code>) you have to override <code>%{__python}</code> to tell <code>brp-python-bytecompile</code> to use the python2 interpreter for byte compiling.
 </li>
 </ol>
 
@@ -184,15 +186,110 @@ The <code>%py_byte_compile</code> macro takes two arguments.  The first is the p
 
 {{admon/warning|No %{} for py_byte_compile|RPM macros can only take arguments when they do not have curly braces around them.  Therefore, py_byte_compile won't work correctly if you write: <code>%{py_byte_compile} %{__python2}</code>}}
 
+==Deciding when to package for a multiple Python runtimes==
+
+'''Applications''' 
+Application foo is not meant to be used within others python libraries via `import foo` and both 
+python3 and python2 versions of foo provides same functionality and therefore only one version is 
+needed. This also includes scripts. DevAssistant is an *application* - We invoke DA and we don't care
+if it is python2 and python3 based, both will fulfill our task.
+
+'''Applications Exceptions'''
+On the other hand, pip isn't application even though it s not meant to be used via import statement 
+because both python3 and python2 versions provides different functionality (python-pip installs 
+python2 packages and python3-pip installs python3 packages), therefore it is an *exception*.
+
+'''Modules'''
+Modules are meant to be used via import statement in other python libraries and therefore both 
+python2 and python3 (and any others future majors) versions are needed
+
+Both modules and applications exceptions should be packaged for every major python runtime available
+if supported by upstream.
+
+===Packaging Applications (single Python runtime)===
+
+{{admon/warning|Python3 runtime|When packaging only for a single Python runtime you are obligated to use a python3 version of the runtime but only if upstream supports it.}}
+
+When packaging an application you should use a python runtime which is default for a given Fedora
+release (python3 for Fedora23) but only if the application support this python runtime. To accomplish
+this we can use the unversioned python macros in a specportable manner accross different Fedora releases
+and EPEL.
+<pre>
+%global pypi_name devassistant
+
+Name:           %{pypi_name}
+Version:        0.11.1
+Release:        1%{?dist}
+Summary:        DevAssistant helps you kickstart your projects with ease
+
+License:        GPLv2+
+URL:            https://github.com/bkabrda/devassistant
+Source0:        https://pypi.python.org/packages/source/d/%{pypi_name}/%{pypi_name}-%{version}.tar.gz
+BuildArch:      noarch
+
+BuildRequires:  python%{?py_default_major}-devel
+BuildRequires:  python%{?py_default_major}-setuptools
+BuildRequires:  python%{?py_default_major}-sphinx
+
+Requires:       python%{?py_default_major}-setuptools
+
+%description
+DevAssistant (http://devassistant.org) can help you with creating and setting up basic projects in
+various languages, installing dependencies, setting up environment etc.
+It is based on idea of per-{language/framework/…} “assistants” (plugins) with hierarchical structure.
+
+%prep
+%setup -q -n %{pypi_name}-%{version}
+# Remove bundled egg-info
+rm -rf %{pypi_name}.egg-info
+
+# generate html docs 
+sphinx-build docs html
+# remove the sphinx-build leftovers
+rm -rf html/.{doctrees,buildinfo}
 
 
-== Common SRPM vs split SRPMs ==
+%build
+%{__python} setup.py build
 
-Many times when you package a python module you will want to create a module for python2 and a module for python3.  There are two ways of doing this: either from a single SRPM or from multiple.  The rule to choose which method is simple: if the python2 and python3 modules are distributed as a single tarball (many times as a single directory of source where the <code>/usr/bin/2to3</code> program is used to transform the code at buildtime) then you must package them as subpackages built from a single SRPM.  If they come in multiple tarballs then package them from multiple SRPMs.
 
-{{admon/note|Python Bindings|python bindings are sometimes built as part of the C library's build.  The ideal for these is to patch the code so it will build against both python2 and python3.  Then take a copy of the sources during the <code>%prep</code> phase, and configure one subdirectory to build against python 2, another to build against python 3.  These changes should be upstreamed.  Example: the build of <code>rpm</code> itself emits an <code>rpm-python</code> subpackage (see [[rhbug:531543|Red Hat Bug 531543]].)}}
+%install
+%{__python} setup.py install --skip-build --root %{buildroot}
 
-=== Multiple SRPMS ===
+
+
+%files
+%doc html README.rst LICENSE devassistant/dapi/licenses.py test/fixtures/doc/c/LICENSE
+%{_bindir}/da
+%{_bindir}/da-gui
+%{_bindir}/devassistant
+%{_bindir}/devassistant-gui
+%{python_sitelib}/%{pypi_name}
+%{python_sitelib}/%{pypi_name}-%{version}-py?.?.egg-info
+
+%changelog
+* Wed May 13 2015 John Doe <jdoe@example.com> - 0.11.1-1
+- Initial package.
+</pre>
+
+Example of specfile used to build an application with a default python in a way that it may
+be built accross different Fedora release versions and even within EPEL without any changes neccessary.
+Note the usage of unversioned macros: __python, python_sitelib and special macro for listing a requires
+py_default_major which expands on Fedora23 to value 3 so python%{?py_default_major}-devel will become
+a python3-devel and is ignored on others (hence expanding to python-devel).
+
+
+===Packaging for multiple Python runtimes===
+
+
+Many times when you package a python module you will want to create a module for all major python
+runtimes available. There are two ways of doing this: either from a single SRPM or from multiple.
+The rule to choose which method is simple: if the source code for every major version of python is
+distributed as a single tarball (many times as a single directory of source where for example the 
+/usr/bin/2to3 program is used to transform python2 code to python3 at buildtime) then you must package
+them as subpackages built from a single SRPM.
+
+==== Multiple SRPMS ====
 
 When upstream ships multiple tarballs with one tarball containing python2 code and a different tarball containing python3 code, we should ship those as multiple SRPMs.  The two SRPMs could have different maintainers within Fedora and the two packages need not upgrade at the same time.  Building from multiple SRPMs has some advantages and disadvantages:
 
@@ -211,7 +308,7 @@ The following practices are designed to help mitigate the disadvantages listed a
 * Complete any python 2 Merge Review when doing the python 3 version.  Doing this gets issues that apply to both packages addressed at the same time.
 * Add a link to the python 2 Merge Review/Package Review to the python 3 Package Review
 
-=== Subpackages ===
+==== Subpackages ====
 
 {{admon/warning|Do not build python3 modules without upstream support|If upstream is shipping a module for python2 and does not support making that module run on python3, do not package a python3 version of it in Fedora.  If running <code>2to3</code> or adding a patch enables the code to work, you can certainly tell upstream that it works to encourage them to support python3.  However, doing this on our own in Fedora is essentially creating a fork.  That has a large burden for maintaining the code, fixing bugs, porting when a new version of upstream's code appears, managing a release schedule, and other tasks normally handled by upstream.  It's much better if we can cooperate with upstream to share this work than doing it all on our own.}}
 
@@ -267,6 +364,7 @@ Source0:        http://pypi.python.org/packages/source/d/%{srcname}/%{srcname}-%
 # Fix a failing test case
 Patch0:         python-setuptools-test.patch
 
+Provides:       python2-setuptools
 BuildArch:      noarch
 BuildRequires:  python2-devel
 %if 0%{?with_python3}
@@ -275,6 +373,8 @@ BuildRequires:  python3-devel
 </pre>
 
 When we build the python3 module in addition to the python2 module we need both <code>python2-devel</code> and <code>python3-devel</code>.
+
+{{admon/warning|Provides for python2 package|As you can see in the specfile definition python-setuptools provides python2-setuptools this is because the meaning of the /usr/bin/python (and hence expectation of what python-setuptools package should provides) may change from pointing to /usr/bin/python2 to /usr/bin/python3 in the future so we want to explicitly provides python2 packages to make any future change to meaning of the /usr/bin/python as non destructive as possible.}}
 
 <pre>
 %description

@@ -1,14 +1,16 @@
-== Multiple Python Runtimes ==
+== Python Version Support ==
 
-In Fedora we have multiple python runtimes, one for each supported major release.  At this point that's one for python2.x and one for python3.x
+In Fedora we have multiple python runtimes, one for each supported major release. At this point that's one for python2.x and one for python3.x. If a piece of software supports python3, it must be packaged for python3. If it supports python2 as well, it may be packaged for python2. If it supports only python2 then it must not be packaged for python3.
+
+== Multiple Python Runtimes ==
 
 Each runtime corresponds to a binary of the form <code>/usr/bin/python$MAJOR.$MINOR</code>  One of these python runtimes is the "system runtime" which is what is run when invoking <code>/usr/bin/python</code>.  On Fedora 23 this is a link to <code>/usr/bin/python3</code> (which itself is a link to <code>/usr/bin/python3.4</code>).
 
 However, packages in Fedora should not depend on where <code>/usr/bin/python</code> happens to point but instead should call the proper executable for the needed python major version directly, either <code>/usr/bin/python2</code> or <code>/usr/bin/python3</code> as appropriate.
 
 All python runtimes have a virtual provide for <code>python(abi) = $MAJOR-$MINOR</code>.  For example, the python-3.1 runtime rpm has:
-$ rpm -q --provides python3 |grep -i abi
-python(abi) = 3.1
+  $ rpm -q --provides python3 |grep -i abi
+  python(abi) = 3.1
 
 python modules using these runtimes should have a corresponding "Requires" line on the python runtime that they are used with.  This is done automatically for files below <code>/usr/lib[^/]*/python${PYVER}</code>
 
@@ -532,11 +534,11 @@ and these will collide.
 
 For example <code>python-coverage</code> has a <code>setup.py</code> that contains:
 <pre>
-entry_points = {
-'console_scripts': [
-'coverage = coverage:main',
-]
-},
+    entry_points = {
+        'console_scripts': [
+            'coverage = coverage:main',
+            ]
+        },
 </pre>
 
 which thus generates a <code>/usr/bin/coverage</code> executable (this is a python
@@ -546,7 +548,7 @@ information on the latter).
 Similarly for the 'scripts' clause; see e.g. <code>python-pygments</code>:
 <code>Pygments-1.1.1/setup.py</code> has:
 <pre>
-scripts = ['pygmentize'],
+    scripts = ['pygmentize'],
 </pre>
 which generates a <code>/usr/bin/pygmentize</code> (this is a python script that leverages the pygments syntax-highlighting module, giving a simple command-line interface for generating syntax-highlighted files)
 
